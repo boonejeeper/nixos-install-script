@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# ⚠ DEPRECATED — use ./install.sh instead.
+#   This one-shot script runs nixos-anywhere on localhost, which cannot work
+#   reliably on a single machine over WiFi: kexec kills the controlling process
+#   mid-install (blank screen), and the stock kexec image has no WiFi. See
+#   README.md → "Why two stages". Kept only for reference.
+#
 # nixos-install-from-cachyos.sh
 #
 # Interactive NixOS installer for CachyOS (and any Arch-based system).
@@ -695,8 +701,11 @@ cat > flake.nix <<NIXEOF
   description = "NixOS — ${HOSTNAME}";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    disko       = { url = "github:nix-community/disko"; inputs.nixpkgs.follows = "nixpkgs"; };
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    disko       = {
+      url = "github:nix-community/disko";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = { self, nixpkgs, disko, ... }:
@@ -718,16 +727,25 @@ nix flake lock
 ok "flake.lock written"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 5 — Build note
+# 5 — Pre-build (validate the entire closure before disk operations)
 # ═══════════════════════════════════════════════════════════════════════════════
-blank; hr; info "5/8  System build strategy"; hr
+blank; hr; info "5/8  Pre-building NixOS closure"; hr
+
 if [[ "$DRY_RUN" == "true" ]]; then
     info "DRY RUN — no build will occur."
 elif [[ "$VM_TEST" == "true" ]]; then
     info "VM TEST — nixos-anywhere will build inside QEMU."
 else
-    info "Building NixOS locally while installation prepares the disk…"
-    info "Your current Wi-Fi connection will be used for downloads."
+    info "Pre-building the complete NixOS system locally…"
+    info "This ensures the build succeeds BEFORE kexec or disk changes."
+    info "You'll see nix output below. This may take 5–15 minutes depending on your internet."
+    blank
+
+    nix build "${WORKDIR}#${HOSTNAME}" --verbose
+
+    blank
+    ok "Pre-build completed successfully."
+    ok "The entire NixOS closure is ready. Installation will now proceed."
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -883,8 +901,17 @@ elif [[ "$VM_TEST" == "true" ]]; then
     blank
 
 else
-    info "8/8  Running nixos-anywhere"
+    info "8/8  Running nixos-anywhere (kexec + install)"
     hr; blank
+
+    warn "This will now:"
+    warn "  1. kexec into a NixOS RAM environment"
+    warn "  2. Partition and format ${DISK_DEVICE}"
+    warn "  3. Deploy the pre-built NixOS system"
+    warn "  4. Reboot into your new NixOS"
+    blank
+    warn "Your SSH connection may drop for ~2 minutes. This is normal."
+    blank
 
     # Build command as an array so quoting is clean
     NIXOS_ANYWHERE_CMD=(
@@ -892,6 +919,7 @@ else
         --flake "${WORKDIR}#${HOSTNAME}"
         --target-host root@127.0.0.1
         --build-on local
+        --verbose
     )
 
     if [[ "$LUKS" == "true" ]]; then
@@ -901,10 +929,14 @@ else
         NIXOS_ANYWHERE_CMD+=("--disk-encryption-keys" "/tmp/luks.key" "$LUKS_KEY_TMP")
     fi
 
-    "${NIXOS_ANYWHERE_CMD[@]}"
-
-    blank
-    ok "nixos-anywhere finished. Machine is rebooting into NixOS."
+    if "${NIXOS_ANYWHERE_CMD[@]}"; then
+        blank
+        ok "nixos-anywhere finished successfully."
+        ok "Your machine is rebooting into NixOS."
+    else
+        blank
+        die "nixos-anywhere failed. Check the output above for details."
+    fi
     blank
     info "After reboot, log in with:"
     echo "  ssh ${USERNAME}@<your-ip>"

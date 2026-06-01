@@ -601,12 +601,7 @@ else  # headless
     USER_GROUPS='[ "wheel" "networkmanager" ]'
 fi
 
-# LUKS boot device line (partition 2 on GPT)
-if [[ "$LUKS" == "true" ]]; then
-    LUKS_BOOT_SNIPPET="  boot.initrd.luks.devices.\"cryptroot\".device = \"${DISK_DEVICE}2\";"
-else
-    LUKS_BOOT_SNIPPET="  # No LUKS encryption"
-fi
+# Note: LUKS configuration is handled by disko, no manual config needed
 
 # Font block — only for graphical installs
 if [[ "$DE" != "none" ]]; then
@@ -638,7 +633,6 @@ cat > configuration.nix <<NIXEOF
   # ── Bootloader ──────────────────────────────────────────────────────────────
   boot.loader.systemd-boot.enable      = true;
   boot.loader.efi.canTouchEfiVariables = true;
-${LUKS_BOOT_SNIPPET}
 
   # ── Networking ──────────────────────────────────────────────────────────────
   networking.hostName          = "${HOSTNAME}";

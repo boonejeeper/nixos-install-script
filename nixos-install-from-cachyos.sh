@@ -805,8 +805,10 @@ if [[ "$USE_WIFI" == "true" ]]; then
     else
         info "Building Wi-Fi kexec image (downloads ~400 MB from cache.nixos.org)…"
         nix build .#kexec-wifi
-        mkdir -p kexec-build
-        cp -L result/* kexec-build/
+        mkdir -p kexec-build/kexec
+        cp -L result/bzImage kexec-build/kexec/
+        cp -L result/initrd.gz kexec-build/kexec/
+        cp -L result/kexec-boot kexec-build/kexec/run
         tar -czf kexec-wifi-installer.tar.gz -C kexec-build .
         rm -rf kexec-build
         KEXEC_FLAG="--kexec ${WORKDIR}/kexec-wifi-installer.tar.gz"
